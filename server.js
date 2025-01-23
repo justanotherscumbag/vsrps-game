@@ -62,8 +62,11 @@ io.on('connection', (socket) => {
     });
 
     socket.on('joinLobby', ({ name, username }) => {
+        console.log(`Join lobby attempt: ${name} by ${username}`);
         const lobby = lobbies.get(name);
+        console.log('Lobby state:', lobby);
         if (lobby && lobby.players.length < 2) {
+            console.log('Adding player to lobby');
             lobby.players.push({ id: socket.id, cards: [] });
             socket.join(name);
 
