@@ -94,6 +94,7 @@
                 });
 
                 socket.on('gameStart', ({ player1Cards, player2Cards, currentPlayer, opponentUsername }) => {
+                    console.log('Game start received:', { player1Cards, player2Cards, currentPlayer, opponentUsername });
                     setPlayerCards(player1Cards);
                     setOpponentCards(player2Cards);
                     setIsMyTurn(currentPlayer === 0);
