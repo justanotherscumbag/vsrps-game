@@ -57,29 +57,30 @@ io.on('connection', (socket) => {
             lobby.players.push({ id: socket.id, cards: [] });
             socket.join(name);
             
-            if (lobby.players.length === 2) {
-                const deck = lobby.deck;
-                lobby.players[0].cards = deck.slice(0, CARDS_PER_PLAYER);
-                lobby.players[1].cards = deck.slice(CARDS_PER_PLAYER);
-                lobby.gameState = 'playing';
-                lobby.currentPlayer = 0;
-                
-                const player1Username = users.get(lobby.players[0].id);
-                const player2Username = users.get(lobby.players[1].id);
-                
-                io.to(lobby.players[0].id).emit('gameStart', {
-                    player1Cards: lobby.players[0].cards,
-                    player2Cards: lobby.players[1].cards,
-                    currentPlayer: 0,
-                    opponentUsername: player2Username
-                });
-                
-                io.to(lobby.players[1].id).emit('gameStart', {
-                    player1Cards: lobby.players[1].cards,
-                    player2Cards: lobby.players[0].cards,
-                    currentPlayer: 0,
-                    opponentUsername: player1Username
-                });
+            lobby.players.push({ id: socket.id, cards: [] });
+            socket.join(name);
+            const player1Username = users.get(lobby.players[0].id);
+            const player2Username = username;
+            
+            const deck = lobby.deck;
+            lobby.players[0].cards = deck.slice(0, CARDS_PER_PLAYER);
+            lobby.players[1].cards = deck.slice(CARDS_PER_PLAYER);
+            lobby.gameState = 'playing';
+            lobby.currentPlayer = 0;
+            
+            io.to(lobby.players[0].id).emit('gameStart', {
+                player1Cards: lobby.players[0].cards,
+                player2Cards: lobby.players[1].cards,
+                currentPlayer: 0,
+                opponentUsername: player2Username
+            });
+            
+            io.to(lobby.players[1].id).emit('gameStart', {
+                player1Cards: lobby.players[1].cards,
+                player2Cards: lobby.players[0].cards,
+                currentPlayer: 0,
+                opponentUsername: player1Username
+            });
                 
                 console.log(`Game started in lobby: ${name} between ${player1Username} and ${player2Username}`);
             }
