@@ -1,7 +1,6 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -27,9 +26,9 @@ io.on('connection', (socket) => {
     
     socket.on('setUsername', (username) => {
         users.set(socket.id, username);
-        socket.emit('lobbiesUpdate', Array.from(lobbies.values()).map(lobby => ({
+        io.emit('lobbiesUpdate', Array.from(lobbies.values()).map(lobby => ({
             name: lobby.name,
-            host: users.get(lobby.players[0].id)
+            host: users.get(lobby.players[0]?.id)
         })));
     });
 
@@ -39,15 +38,26 @@ io.on('connection', (socket) => {
                 name,
                 players: [{ id: socket.id, cards: [] }],
                 gameState: 'waiting',
-                deck: generateDeck()
+                deck: generateDeck(),
+                messages: []
             });
             socket.join(name);
             socket.emit('lobbyCreated', name);
             io.emit('lobbiesUpdate', Array.from(lobbies.values()).map(lobby => ({
                 name: lobby.name,
-                host: users.get(lobby.players[0].id)
+                host: users.get(lobby.players[0]?.id)
             })));
             console.log(`Lobby created: ${name} by ${username}`);
+        }
+    });
+
+    socket.on('chatMessage', ({ text, lobbyName }) => {
+        const lobby = lobbies.get(lobbyName);
+        const username = users.get(socket.id);
+        if (lobby && username) {
+            const message = { username, text };
+            lobby.messages.push(message);
+            io.to(lobbyName).emit('chatMessage', message);
         }
     });
 
@@ -56,34 +66,38 @@ io.on('connection', (socket) => {
         if (lobby && lobby.players.length < 2) {
             lobby.players.push({ id: socket.id, cards: [] });
             socket.join(name);
-            
-            lobby.players.push({ id: socket.id, cards: [] });
-            socket.join(name);
-            const player1Username = users.get(lobby.players[0].id);
-            const player2Username = username;
-            
+
             const deck = lobby.deck;
             lobby.players[0].cards = deck.slice(0, CARDS_PER_PLAYER);
             lobby.players[1].cards = deck.slice(CARDS_PER_PLAYER);
             lobby.gameState = 'playing';
             lobby.currentPlayer = 0;
-            
+
+            const player1Username = users.get(lobby.players[0].id);
+            const player2Username = users.get(lobby.players[1].id);
+
             io.to(lobby.players[0].id).emit('gameStart', {
                 player1Cards: lobby.players[0].cards,
                 player2Cards: lobby.players[1].cards,
                 currentPlayer: 0,
-                opponentUsername: player2Username
+                opponentUsername: player2Username,
+                messages: lobby.messages
             });
-            
+
             io.to(lobby.players[1].id).emit('gameStart', {
                 player1Cards: lobby.players[1].cards,
                 player2Cards: lobby.players[0].cards,
                 currentPlayer: 0,
-                opponentUsername: player1Username
+                opponentUsername: player1Username,
+                messages: lobby.messages
             });
-                
-                console.log(`Game started in lobby: ${name} between ${player1Username} and ${player2Username}`);
-            }
+
+            io.emit('lobbiesUpdate', Array.from(lobbies.values()).map(l => ({
+                name: l.name,
+                host: users.get(l.players[0]?.id)
+            })));
+
+            console.log(`Game started in lobby: ${name} between ${player1Username} and ${player2Username}`);
         }
     });
 
@@ -113,13 +127,12 @@ io.on('connection', (socket) => {
                     player.currentCard = null;
                     opponent.currentCard = null;
 
-                    // Check if game is over
                     if (lobby.players[0].cards.length === 0 && lobby.players[1].cards.length === 0) {
                         io.to(lobbyName).emit('gameOver');
                         lobbies.delete(lobbyName);
-                        io.emit('lobbiesUpdate', Array.from(lobbies.values()).map(lobby => ({
-                            name: lobby.name,
-                            host: users.get(lobby.players[0].id)
+                        io.emit('lobbiesUpdate', Array.from(lobbies.values()).map(l => ({
+                            name: l.name,
+                            host: users.get(l.players[0]?.id)
                         })));
                     }
                 }
@@ -131,7 +144,6 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
         const username = users.get(socket.id);
         users.delete(socket.id);
         
@@ -139,9 +151,9 @@ io.on('connection', (socket) => {
             if (lobby.players.some(p => p.id === socket.id)) {
                 io.to(lobbyName).emit('playerDisconnected');
                 lobbies.delete(lobbyName);
-                io.emit('lobbiesUpdate', Array.from(lobbies.values()).map(lobby => ({
-                    name: lobby.name,
-                    host: users.get(lobby.players[0].id)
+                io.emit('lobbiesUpdate', Array.from(lobbies.values()).map(l => ({
+                    name: l.name,
+                    host: users.get(l.players[0]?.id)
                 })));
                 console.log(`Lobby deleted: ${lobbyName} (${username} disconnected)`);
             }
