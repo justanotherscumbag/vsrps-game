@@ -13,17 +13,53 @@
 <body>
     <div id="root"></div>
     <script type="text/babel">
+        const Login = ({ onLogin }) => {
+            const [username, setUsername] = React.useState('');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (username.trim()) {
+                    onLogin(username);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-100">
+                    <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-md">
+                        <h2 className="text-2xl mb-4">Enter Username</h2>
+                        <input
+                            type="text"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            className="w-full p-2 border rounded mb-4"
+                            placeholder="Username"
+                            required
+                        />
+                        <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">
+                            Join Game
+                        </button>
+                    </form>
+                </div>
+            );
+        };
+
         const RockPaperScissors = () => {
+            const [username, setUsername] = React.useState('');
             const [lobbyName, setLobbyName] = React.useState('');
-            const [gameState, setGameState] = React.useState('menu');
+            const [gameState, setGameState] = React.useState('login');
             const [availableLobbies, setAvailableLobbies] = React.useState([]);
             const [playerCards, setPlayerCards] = React.useState([]);
             const [opponentCards, setOpponentCards] = React.useState([]);
             const [isMyTurn, setIsMyTurn] = React.useState(false);
             const [roundResult, setRoundResult] = React.useState(null);
+            const [opponentName, setOpponentName] = React.useState('');
             const socket = io();
 
             React.useEffect(() => {
+                if (!username) return;
+
+                socket.emit('setUsername', username);
+
                 socket.on('lobbiesUpdate', (lobbies) => {
                     setAvailableLobbies(lobbies);
                 });
@@ -33,11 +69,12 @@
                     setGameState('waiting');
                 });
 
-                socket.on('gameStart', ({ player1Cards, player2Cards, currentPlayer }) => {
+                socket.on('gameStart', ({ player1Cards, player2Cards, currentPlayer, opponentUsername }) => {
                     const isPlayer1 = socket.id === socket.id;
                     setPlayerCards(isPlayer1 ? player1Cards : player2Cards);
                     setOpponentCards(isPlayer1 ? player2Cards : player1Cards);
                     setIsMyTurn(currentPlayer === (isPlayer1 ? 0 : 1));
+                    setOpponentName(opponentUsername);
                     setGameState('playing');
                 });
 
@@ -71,18 +108,23 @@
                     socket.off('roundResult');
                     socket.off('playerDisconnected');
                 };
-            }, []);
+            }, [username]);
+
+            const handleLogin = (name) => {
+                setUsername(name);
+                setGameState('menu');
+            };
 
             const createLobby = () => {
                 const name = prompt('Enter lobby name:');
                 if (name) {
-                    socket.emit('createLobby', name);
+                    socket.emit('createLobby', { name, username });
                 }
             };
 
-            const joinLobby = (name) => {
-                socket.emit('joinLobby', name);
-                setLobbyName(name);
+            const joinLobby = (lobby) => {
+                socket.emit('joinLobby', { name: lobby.name, username });
+                setLobbyName(lobby.name);
                 setGameState('waiting');
             };
 
@@ -102,25 +144,38 @@
                 </div>
             );
 
+            if (gameState === 'login') {
+                return <Login onLogin={handleLogin} />;
+            }
+
             if (gameState === 'menu') {
                 return (
-                    <div className="p-4">
-                        <h1 className="text-2xl mb-4">Rock Paper Scissors</h1>
+                    <div className="p-8 max-w-4xl mx-auto">
+                        <div className="flex justify-between items-center mb-8">
+                            <h1 className="text-3xl font-bold">Rock Paper Scissors</h1>
+                            <div className="text-lg">Welcome, {username}!</div>
+                        </div>
                         <button 
-                            className="bg-blue-500 text-white px-4 py-2 rounded mb-4"
+                            className="w-full bg-blue-500 text-white px-6 py-3 rounded-lg mb-8 hover:bg-blue-600"
                             onClick={createLobby}
                         >
-                            Create Lobby
+                            Create New Lobby
                         </button>
-                        <h2 className="text-xl mb-2">Available Lobbies:</h2>
-                        <div className="space-y-2">
+                        <h2 className="text-2xl mb-4">Available Lobbies:</h2>
+                        <div className="grid gap-4">
                             {availableLobbies.map(lobby => (
                                 <div 
-                                    key={lobby}
-                                    className="border p-2 rounded cursor-pointer hover:bg-gray-100"
+                                    key={lobby.name}
+                                    className="border rounded-lg p-4 hover:bg-gray-50 cursor-pointer flex justify-between items-center"
                                     onClick={() => joinLobby(lobby)}
                                 >
-                                    {lobby}
+                                    <div>
+                                        <h3 className="text-xl font-semibold">{lobby.name}</h3>
+                                        <p className="text-gray-600">Host: {lobby.host}</p>
+                                    </div>
+                                    <button className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                                        Join
+                                    </button>
                                 </div>
                             ))}
                         </div>
@@ -130,19 +185,31 @@
 
             if (gameState === 'waiting') {
                 return (
-                    <div className="p-4">
-                        <h1 className="text-2xl mb-4">Waiting for opponent...</h1>
-                        <p>Lobby: {lobbyName}</p>
+                    <div className="p-8 text-center">
+                        <h1 className="text-3xl mb-4">Waiting for opponent...</h1>
+                        <p className="text-xl">Lobby: {lobbyName}</p>
+                        <button 
+                            className="mt-8 bg-red-500 text-white px-6 py-3 rounded hover:bg-red-600"
+                            onClick={() => setGameState('menu')}
+                        >
+                            Leave Lobby
+                        </button>
                     </div>
                 );
             }
 
             return (
-                <div className="p-4">
-                    <h1 className="text-2xl mb-4">Rock Paper Scissors</h1>
-                    <div className="mb-4">
-                        <h2 className="text-xl">Opponent's Cards ({opponentCards.length})</h2>
-                        <div className="flex gap-2 flex-wrap">
+                <div className="p-8 max-w-6xl mx-auto">
+                    <div className="flex justify-between items-center mb-8">
+                        <h1 className="text-3xl font-bold">Rock Paper Scissors</h1>
+                        <div className="text-lg">
+                            <span className="font-semibold">{username}</span> vs <span className="font-semibold">{opponentName}</span>
+                        </div>
+                    </div>
+                    
+                    <div className="mb-8">
+                        <h2 className="text-2xl mb-4">Opponent's Cards ({opponentCards.length})</h2>
+                        <div className="flex gap-4 flex-wrap">
                             {opponentCards.map((_, i) => (
                                 <div key={i} className="w-24 h-32 border-2 rounded-lg bg-gray-200" />
                             ))}
@@ -150,18 +217,25 @@
                     </div>
                     
                     {roundResult && (
-                        <div className="mb-4 p-4 bg-blue-100 rounded">
-                            <p>You played: {roundResult.playerCard}</p>
-                            <p>Opponent played: {roundResult.opponentCard}</p>
-                            <p>Result: {roundResult.winner === 'draw' ? 'Draw!' : 
-                                roundResult.winner === (socket.id === socket.id ? 'player1' : 'player2') ? 
-                                'You won!' : 'You lost!'}</p>
+                        <div className="mb-8 p-6 bg-blue-100 rounded-lg">
+                            <p className="text-lg">You played: {roundResult.playerCard}</p>
+                            <p className="text-lg">Opponent played: {roundResult.opponentCard}</p>
+                            <p className="text-xl font-bold mt-2">
+                                {roundResult.winner === 'draw' ? 'Draw!' : 
+                                    roundResult.winner === (socket.id === socket.id ? 'player1' : 'player2') ? 
+                                    'You won!' : 'You lost!'}
+                            </p>
                         </div>
                     )}
 
-                    <div className="mb-4">
-                        <h2 className="text-xl">Your Cards {isMyTurn ? '(Your Turn)' : ''}</h2>
-                        <div className="flex gap-2 flex-wrap">
+                    <div className="mb-8">
+                        <h2 className="text-2xl mb-4">
+                            Your Cards {isMyTurn ? 
+                                <span className="text-green-500 font-bold">(Your Turn)</span> : 
+                                <span className="text-gray-500">(Waiting)</span>
+                            }
+                        </h2>
+                        <div className="flex gap-4 flex-wrap">
                             {playerCards.map((card, i) => (
                                 <div key={i}>{renderCard(card)}</div>
                             ))}
