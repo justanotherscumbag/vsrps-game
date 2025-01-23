@@ -13,31 +13,54 @@
 <body>
     <div id="root"></div>
     <script type="text/babel">
-        const Login = ({ onLogin }) => {
-            const [username, setUsername] = React.useState('');
+        const Chat = ({ messages, onSendMessage }) => {
+            const [message, setMessage] = React.useState('');
+            const messagesEndRef = React.useRef(null);
+
+            const scrollToBottom = () => {
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            };
+
+            React.useEffect(scrollToBottom, [messages]);
 
             const handleSubmit = (e) => {
                 e.preventDefault();
-                if (username.trim()) {
-                    onLogin(username);
+                if (message.trim()) {
+                    onSendMessage(message);
+                    setMessage('');
                 }
             };
 
             return (
-                <div className="min-h-screen flex items-center justify-center bg-gray-100">
-                    <form onSubmit={handleSubmit} className="bg-white p-8 rounded-lg shadow-md">
-                        <h2 className="text-2xl mb-4">Enter Username</h2>
-                        <input
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="w-full p-2 border rounded mb-4"
-                            placeholder="Username"
-                            required
-                        />
-                        <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">
-                            Join Game
-                        </button>
+                <div className="h-96 flex flex-col bg-white rounded-lg shadow">
+                    <div className="flex-1 overflow-y-auto p-4">
+                        {messages.map((msg, i) => (
+                            <div key={i} className={`mb-2 ${msg.isSelf ? 'text-right' : ''}`}>
+                                <span className="px-4 py-2 rounded-lg inline-block 
+                                    ${msg.isSelf ? 'bg-blue-500 text-white' : 'bg-gray-200'}">
+                                    <div className="font-bold text-sm">{msg.username}</div>
+                                    {msg.text}
+                                </span>
+                            </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                    </div>
+                    <form onSubmit={handleSubmit} className="border-t p-4">
+                        <div className="flex">
+                            <input
+                                type="text"
+                                value={message}
+                                onChange={(e) => setMessage(e.target.value)}
+                                className="flex-1 border rounded-l px-3 py-2"
+                                placeholder="Type a message..."
+                            />
+                            <button 
+                                type="submit" 
+                                className="bg-blue-500 text-white px-4 rounded-r"
+                            >
+                                Send
+                            </button>
+                        </div>
                     </form>
                 </div>
             );
@@ -53,6 +76,7 @@
             const [isMyTurn, setIsMyTurn] = React.useState(false);
             const [roundResult, setRoundResult] = React.useState(null);
             const [opponentName, setOpponentName] = React.useState('');
+            const [messages, setMessages] = React.useState([]);
             const socket = io();
 
             React.useEffect(() => {
@@ -70,26 +94,31 @@
                 });
 
                 socket.on('gameStart', ({ player1Cards, player2Cards, currentPlayer, opponentUsername }) => {
-                    const isPlayer1 = socket.id === socket.id;
-                    setPlayerCards(isPlayer1 ? player1Cards : player2Cards);
-                    setOpponentCards(isPlayer1 ? player2Cards : player1Cards);
-                    setIsMyTurn(currentPlayer === (isPlayer1 ? 0 : 1));
+                    setPlayerCards(player1Cards);
+                    setOpponentCards(player2Cards);
+                    setIsMyTurn(currentPlayer === 0);
                     setOpponentName(opponentUsername);
                     setGameState('playing');
                 });
 
                 socket.on('turnChange', (currentPlayer) => {
-                    const isPlayer1 = socket.id === socket.id;
-                    setIsMyTurn(currentPlayer === (isPlayer1 ? 0 : 1));
+                    setIsMyTurn(currentPlayer === (socket.id === socket.id ? 0 : 1));
+                });
+
+                socket.on('chatMessage', (msg) => {
+                    setMessages(prev => [...prev, {
+                        username: msg.username,
+                        text: msg.text,
+                        isSelf: msg.username === username
+                    }]);
                 });
 
                 socket.on('roundResult', ({ player1Card, player2Card, winner, player1Cards, player2Cards }) => {
-                    const isPlayer1 = socket.id === socket.id;
-                    setPlayerCards(isPlayer1 ? player1Cards : player2Cards);
-                    setOpponentCards(isPlayer1 ? player2Cards : player1Cards);
+                    setPlayerCards(player1Cards);
+                    setOpponentCards(player2Cards);
                     setRoundResult({ 
-                        playerCard: isPlayer1 ? player1Card : player2Card,
-                        opponentCard: isPlayer1 ? player2Card : player1Card,
+                        playerCard: player1Card,
+                        opponentCard: player2Card,
                         winner
                     });
                     setTimeout(() => setRoundResult(null), 3000);
@@ -97,6 +126,7 @@
 
                 socket.on('playerDisconnected', () => {
                     setGameState('menu');
+                    setMessages([]);
                     alert('Opponent disconnected');
                 });
 
@@ -107,8 +137,13 @@
                     socket.off('turnChange');
                     socket.off('roundResult');
                     socket.off('playerDisconnected');
+                    socket.off('chatMessage');
                 };
             }, [username]);
+
+            const handleSendMessage = (text) => {
+                socket.emit('chatMessage', { text, lobbyName });
+            };
 
             const handleLogin = (name) => {
                 setUsername(name);
@@ -145,7 +180,27 @@
             );
 
             if (gameState === 'login') {
-                return <Login onLogin={handleLogin} />;
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            handleLogin(username);
+                        }} className="bg-white p-8 rounded-lg shadow-md">
+                            <h2 className="text-2xl mb-4">Enter Username</h2>
+                            <input
+                                type="text"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                className="w-full p-2 border rounded mb-4"
+                                placeholder="Username"
+                                required
+                            />
+                            <button type="submit" className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">
+                                Join Game
+                            </button>
+                        </form>
+                    </div>
+                );
             }
 
             if (gameState === 'menu') {
@@ -199,47 +254,52 @@
             }
 
             return (
-                <div className="p-8 max-w-6xl mx-auto">
-                    <div className="flex justify-between items-center mb-8">
-                        <h1 className="text-3xl font-bold">Rock Paper Scissors</h1>
-                        <div className="text-lg">
-                            <span className="font-semibold">{username}</span> vs <span className="font-semibold">{opponentName}</span>
+                <div className="p-8 max-w-6xl mx-auto grid grid-cols-12 gap-8">
+                    <div className="col-span-8">
+                        <div className="flex justify-between items-center mb-8">
+                            <h1 className="text-3xl font-bold">Rock Paper Scissors</h1>
+                            <div className="text-lg">
+                                <span className="font-semibold">{username}</span> vs <span className="font-semibold">{opponentName}</span>
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div className="mb-8">
-                        <h2 className="text-2xl mb-4">Opponent's Cards ({opponentCards.length})</h2>
-                        <div className="flex gap-4 flex-wrap">
-                            {opponentCards.map((_, i) => (
-                                <div key={i} className="w-24 h-32 border-2 rounded-lg bg-gray-200" />
-                            ))}
+                        
+                        <div className="mb-8">
+                            <h2 className="text-2xl mb-4">Opponent's Cards ({opponentCards.length})</h2>
+                            <div className="flex gap-4 flex-wrap">
+                                {opponentCards.map((_, i) => (
+                                    <div key={i} className="w-24 h-32 border-2 rounded-lg bg-gray-200" />
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                    
-                    {roundResult && (
-                        <div className="mb-8 p-6 bg-blue-100 rounded-lg">
-                            <p className="text-lg">You played: {roundResult.playerCard}</p>
-                            <p className="text-lg">Opponent played: {roundResult.opponentCard}</p>
-                            <p className="text-xl font-bold mt-2">
-                                {roundResult.winner === 'draw' ? 'Draw!' : 
-                                    roundResult.winner === (socket.id === socket.id ? 'player1' : 'player2') ? 
-                                    'You won!' : 'You lost!'}
-                            </p>
-                        </div>
-                    )}
+                        
+                        {roundResult && (
+                            <div className="mb-8 p-6 bg-blue-100 rounded-lg">
+                                <p className="text-lg">You played: {roundResult.playerCard}</p>
+                                <p className="text-lg">Opponent played: {roundResult.opponentCard}</p>
+                                <p className="text-xl font-bold mt-2">
+                                    {roundResult.winner === 'draw' ? 'Draw!' : 
+                                        roundResult.winner === (socket.id === socket.id ? 'player1' : 'player2') ? 
+                                        'You won!' : 'You lost!'}
+                                </p>
+                            </div>
+                        )}
 
-                    <div className="mb-8">
-                        <h2 className="text-2xl mb-4">
-                            Your Cards {isMyTurn ? 
-                                <span className="text-green-500 font-bold">(Your Turn)</span> : 
-                                <span className="text-gray-500">(Waiting)</span>
-                            }
-                        </h2>
-                        <div className="flex gap-4 flex-wrap">
-                            {playerCards.map((card, i) => (
-                                <div key={i}>{renderCard(card)}</div>
-                            ))}
+                        <div className="mb-8">
+                            <h2 className="text-2xl mb-4">
+                                Your Cards {isMyTurn ? 
+                                    <span className="text-green-500 font-bold">(Your Turn)</span> : 
+                                    <span className="text-gray-500">(Waiting)</span>
+                                }
+                            </h2>
+                            <div className="flex gap-4 flex-wrap">
+                                {playerCards.map((card, i) => (
+                                    <div key={i}>{renderCard(card)}</div>
+                                ))}
+                            </div>
                         </div>
+                    </div>
+                    <div className="col-span-4">
+                        <Chat messages={messages} onSendMessage={handleSendMessage} />
                     </div>
                 </div>
             );
